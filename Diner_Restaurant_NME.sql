@@ -39,9 +39,9 @@ GO
 
 CREATE DATABASE Diner_Restaurant_Eleves
  ON  PRIMARY 
-( NAME = N'Diner_Restaurant_Eleves', FILENAME = N'C:\Data\MSSQL\Diner_Restaurant_Eleves.mdf' , SIZE = 5120KB , MAXSIZE = UNLIMITED, FILEGROWTH = 1024KB )
+( NAME = N'Diner_Restaurant_Eleves', FILENAME = N'C:\temp\Diner_Restaurant_Eleves.mdf' , SIZE = 5120KB , MAXSIZE = UNLIMITED, FILEGROWTH = 1024KB )
  LOG ON 
-( NAME = N'Diner_Restaurant_Eleves_LOG', FILENAME = N'C:\Data\MSSQL\Diner_Restaurant_Eleves_log.ldf' , SIZE = 1024KB , MAXSIZE = 2048GB , FILEGROWTH = 10%)
+( NAME = N'Diner_Restaurant_Eleves_LOG', FILENAME = N'C:\temp\Diner_Restaurant_Eleves_log.ldf' , SIZE = 1024KB , MAXSIZE = 2048GB , FILEGROWTH = 10%)
 GO
 
 -------------------------------------------------------------------------------------------------------
@@ -499,3 +499,55 @@ EXEC GenerateBookings
 GO
 
 -- TO ADD function, trigger and rights here 
+-- Exo 1 - Fonction
+DROP PROC IF EXISTS TestTheCode
+DROP FUNCTION IF EXISTS NbDishesPerType
+GO
+
+CREATE FUNCTION NbDishesPerType(@typeName nvarchar(max)) RETURNS INT AS BEGIN
+	IF ((SELECT COUNT(idDishType) FROM dbo.DishType WHERE dishTypeName = @typeName) = 0) RETURN -1
+	RETURN (SELECT COUNT(idDish) FROM dbo.Dish INNER JOIN DishType ON idDishType = fkDishType WHERE dishTypeName = @typeName)
+END
+GO
+
+SELECT [dbo].[NbDishesPerType]('Entrées') AS 'Result 1'
+
+-- Exo 2 - Trigger
+DROP TRIGGER IF EXISTS CheckBooking
+GO
+
+CREATE TRIGGER CheckBooking ON booking INSTEAD OF INSERT AS BEGIN
+	SELECT * FROM inserted
+	DECLARE @IsError TINYINT; SET @IsError = 0
+	-- table available
+	IF (SELECT COUNT([Booking].[idBooking]) FROM [dbo].[Booking] INNER JOIN inserted ON [Booking].[fkTable] = inserted.[fkTable] AND [Booking].[dateBooking] = inserted.[dateBooking]) > 0 BEGIN
+		PRINT 'table already booked'
+		SET @IsError = 1
+	END
+
+	-- capacité table
+	DECLARE @NbPeople INT
+	SET @NbPeople = (SELECT nbPers FROM inserted)
+	DECLARE @TableCapacity INT
+	SET @TableCapacity = (SELECT [capacity] from [dbo].[Table] INNER JOIN inserted ON fkTable = idTable)
+	IF @NbPeople > @TableCapacity BEGIN
+		PRINT 'table trop petite (Expected ' + CONVERT(nvarchar(max), @TableCapacity) + ' max, got ' + CONVERT(nvarchar(max), @NbPeople) + ')'
+		SET @IsError = 1
+	END
+
+	-- capacité salle
+	DECLARE @RoomCapacity INT
+	SET @RoomCapacity = (SELECT SUM([capacity]) FROM [dbo].[Table])
+	IF (SELECT SUM([Booking].[nbPers]) FROM [dbo].[Booking] INNER JOIN inserted ON [Booking].[dateBooking] = inserted.[dateBooking]) + @NbPeople > @RoomCapacity BEGIN
+		PRINT 'room full'
+		SET @IsError = 1
+	END
+
+	IF @IsError = 0 BEGIN
+		PRINT 'SHOULD ALLOW INSERT HERE BUT I DON''T KNOW HOW TO'
+	END
+END
+GO
+
+INSERT INTO booking VALUES('2021-02-11 19:00', 4, '079 123 45 67', 'Martin', 'Germaine', 10)
+SELECT * FROM Booking ORDER BY idBooking DESC
